@@ -441,6 +441,338 @@ namespace MCPForUnity.Editor.Tools.Animation
             return new { success = false, message = $"AnimatorController not found at '{path}'. Provide a valid 'controllerPath'." };
         }
 
+        public static object RemoveState(JObject @params)
+        {
+            var controller = LoadController(@params);
+            if (controller == null)
+                return ControllerNotFoundError(@params);
+
+            string stateName = @params["stateName"]?.ToString();
+            if (string.IsNullOrEmpty(stateName))
+                return new { success = false, message = "'stateName' is required" };
+
+            int layerIndex = @params["layerIndex"]?.ToObject<int>() ?? 0;
+            if (layerIndex < 0 || layerIndex >= controller.layers.Length)
+                return new { success = false, message = $"Layer index {layerIndex} out of range (controller has {controller.layers.Length} layers)" };
+
+            var rootStateMachine = controller.layers[layerIndex].stateMachine;
+
+            AnimatorState stateToRemove = null;
+            foreach (var cs in rootStateMachine.states)
+            {
+                if (cs.state.name == stateName) { stateToRemove = cs.state; break; }
+            }
+
+            if (stateToRemove == null)
+                return new { success = false, message = $"State '{stateName}' not found in layer {layerIndex}" };
+
+            rootStateMachine.RemoveState(stateToRemove);
+            EditorUtility.SetDirty(controller);
+            AssetDatabase.SaveAssets();
+
+            return new
+            {
+                success = true,
+                message = $"Removed state '{stateName}' from layer {layerIndex}",
+                data = new { stateName, layerIndex }
+            };
+        }
+
+        public static object RemoveTransition(JObject @params)
+        {
+            var controller = LoadController(@params);
+            if (controller == null)
+                return ControllerNotFoundError(@params);
+
+            string fromStateName = @params["fromState"]?.ToString();
+            string toStateName = @params["toState"]?.ToString();
+            if (string.IsNullOrEmpty(fromStateName) || string.IsNullOrEmpty(toStateName))
+                return new { success = false, message = "'fromState' and 'toState' are required" };
+
+            int layerIndex = @params["layerIndex"]?.ToObject<int>() ?? 0;
+            if (layerIndex < 0 || layerIndex >= controller.layers.Length)
+                return new { success = false, message = $"Layer index {layerIndex} out of range" };
+
+            int transitionIndex = @params["transitionIndex"]?.ToObject<int>() ?? 0;
+            var rootStateMachine = controller.layers[layerIndex].stateMachine;
+
+            bool isAnyState = string.Equals(fromStateName, "AnyState", StringComparison.OrdinalIgnoreCase)
+                           || string.Equals(fromStateName, "Any", StringComparison.OrdinalIgnoreCase)
+                           || string.Equals(fromStateName, "Any State", StringComparison.OrdinalIgnoreCase);
+
+            if (isAnyState)
+            {
+                var matching = new List<AnimatorStateTransition>();
+                foreach (var t in rootStateMachine.anyStateTransitions)
+                {
+                    if (t.destinationState?.name == toStateName) matching.Add(t);
+                }
+
+                if (matching.Count == 0)
+                    return new { success = false, message = $"No AnyState transition to '{toStateName}' found in layer {layerIndex}" };
+                if (transitionIndex < 0 || transitionIndex >= matching.Count)
+                    return new { success = false, message = $"Transition index {transitionIndex} out of range (found {matching.Count} matching transitions)" };
+
+                rootStateMachine.RemoveAnyStateTransition(matching[transitionIndex]);
+                fromStateName = "AnyState";
+            }
+            else
+            {
+                AnimatorState fromState = null;
+                foreach (var cs in rootStateMachine.states)
+                {
+                    if (cs.state.name == fromStateName) { fromState = cs.state; break; }
+                }
+                if (fromState == null)
+                    return new { success = false, message = $"State '{fromStateName}' not found in layer {layerIndex}" };
+
+                var matching = new List<AnimatorStateTransition>();
+                foreach (var t in fromState.transitions)
+                {
+                    if (t.destinationState?.name == toStateName) matching.Add(t);
+                }
+
+                if (matching.Count == 0)
+                    return new { success = false, message = $"No transition from '{fromStateName}' to '{toStateName}' found" };
+                if (transitionIndex < 0 || transitionIndex >= matching.Count)
+                    return new { success = false, message = $"Transition index {transitionIndex} out of range (found {matching.Count} matching transitions)" };
+
+                fromState.RemoveTransition(matching[transitionIndex]);
+            }
+
+            EditorUtility.SetDirty(controller);
+            AssetDatabase.SaveAssets();
+
+            return new
+            {
+                success = true,
+                message = $"Removed transition from '{fromStateName}' to '{toStateName}'",
+                data = new { fromState = fromStateName, toState = toStateName, layerIndex }
+            };
+        }
+
+        public static object SetStateMotion(JObject @params)
+        {
+            var controller = LoadController(@params);
+            if (controller == null)
+                return ControllerNotFoundError(@params);
+
+            string stateName = @params["stateName"]?.ToString();
+            if (string.IsNullOrEmpty(stateName))
+                return new { success = false, message = "'stateName' is required" };
+
+            string clipPath = @params["clipPath"]?.ToString();
+            if (string.IsNullOrEmpty(clipPath))
+                return new { success = false, message = "'clipPath' is required" };
+
+            clipPath = AssetPathUtility.SanitizeAssetPath(clipPath);
+            if (clipPath == null)
+                return new { success = false, message = "Invalid asset path" };
+
+            var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
+            if (clip == null)
+                return new { success = false, message = $"AnimationClip not found at '{clipPath}'" };
+
+            int layerIndex = @params["layerIndex"]?.ToObject<int>() ?? 0;
+            if (layerIndex < 0 || layerIndex >= controller.layers.Length)
+                return new { success = false, message = $"Layer index {layerIndex} out of range" };
+
+            var rootStateMachine = controller.layers[layerIndex].stateMachine;
+            AnimatorState state = null;
+            foreach (var cs in rootStateMachine.states)
+            {
+                if (cs.state.name == stateName) { state = cs.state; break; }
+            }
+
+            if (state == null)
+                return new { success = false, message = $"State '{stateName}' not found in layer {layerIndex}" };
+
+            Undo.RecordObject(state, "Set State Motion");
+            state.motion = clip;
+            EditorUtility.SetDirty(controller);
+            AssetDatabase.SaveAssets();
+
+            return new
+            {
+                success = true,
+                message = $"Set motion of state '{stateName}' to '{clip.name}'",
+                data = new { stateName, clipPath, clipName = clip.name, layerIndex }
+            };
+        }
+
+        public static object SetDefaultState(JObject @params)
+        {
+            var controller = LoadController(@params);
+            if (controller == null)
+                return ControllerNotFoundError(@params);
+
+            string stateName = @params["stateName"]?.ToString();
+            if (string.IsNullOrEmpty(stateName))
+                return new { success = false, message = "'stateName' is required" };
+
+            int layerIndex = @params["layerIndex"]?.ToObject<int>() ?? 0;
+            if (layerIndex < 0 || layerIndex >= controller.layers.Length)
+                return new { success = false, message = $"Layer index {layerIndex} out of range" };
+
+            var rootStateMachine = controller.layers[layerIndex].stateMachine;
+            AnimatorState state = null;
+            foreach (var cs in rootStateMachine.states)
+            {
+                if (cs.state.name == stateName) { state = cs.state; break; }
+            }
+
+            if (state == null)
+                return new { success = false, message = $"State '{stateName}' not found in layer {layerIndex}" };
+
+            Undo.RecordObject(rootStateMachine, "Set Default State");
+            rootStateMachine.defaultState = state;
+            EditorUtility.SetDirty(controller);
+            AssetDatabase.SaveAssets();
+
+            return new
+            {
+                success = true,
+                message = $"Set default state to '{stateName}' in layer {layerIndex}",
+                data = new { stateName, layerIndex }
+            };
+        }
+
+        public static object RemoveParameter(JObject @params)
+        {
+            var controller = LoadController(@params);
+            if (controller == null)
+                return ControllerNotFoundError(@params);
+
+            string paramName = @params["parameterName"]?.ToString();
+            if (string.IsNullOrEmpty(paramName))
+                return new { success = false, message = "'parameterName' is required" };
+
+            AnimatorControllerParameter paramToRemove = null;
+            foreach (var p in controller.parameters)
+            {
+                if (p.name == paramName) { paramToRemove = p; break; }
+            }
+
+            if (paramToRemove == null)
+                return new { success = false, message = $"Parameter '{paramName}' not found" };
+
+            controller.RemoveParameter(paramToRemove);
+            EditorUtility.SetDirty(controller);
+            AssetDatabase.SaveAssets();
+
+            return new
+            {
+                success = true,
+                message = $"Removed parameter '{paramName}'",
+                data = new { parameterName = paramName, remainingParameters = controller.parameters.Length }
+            };
+        }
+
+        public static object EditTransition(JObject @params)
+        {
+            var controller = LoadController(@params);
+            if (controller == null)
+                return ControllerNotFoundError(@params);
+
+            string fromStateName = @params["fromState"]?.ToString();
+            string toStateName = @params["toState"]?.ToString();
+            if (string.IsNullOrEmpty(fromStateName) || string.IsNullOrEmpty(toStateName))
+                return new { success = false, message = "'fromState' and 'toState' are required" };
+
+            int layerIndex = @params["layerIndex"]?.ToObject<int>() ?? 0;
+            if (layerIndex < 0 || layerIndex >= controller.layers.Length)
+                return new { success = false, message = $"Layer index {layerIndex} out of range" };
+
+            int transitionIndex = @params["transitionIndex"]?.ToObject<int>() ?? 0;
+            var rootStateMachine = controller.layers[layerIndex].stateMachine;
+
+            bool isAnyState = string.Equals(fromStateName, "AnyState", StringComparison.OrdinalIgnoreCase)
+                           || string.Equals(fromStateName, "Any", StringComparison.OrdinalIgnoreCase)
+                           || string.Equals(fromStateName, "Any State", StringComparison.OrdinalIgnoreCase);
+
+            AnimatorStateTransition transition = null;
+            if (isAnyState)
+            {
+                var matching = new List<AnimatorStateTransition>();
+                foreach (var t in rootStateMachine.anyStateTransitions)
+                {
+                    if (t.destinationState?.name == toStateName) matching.Add(t);
+                }
+                if (matching.Count == 0)
+                    return new { success = false, message = $"No AnyState transition to '{toStateName}' found in layer {layerIndex}" };
+                if (transitionIndex < 0 || transitionIndex >= matching.Count)
+                    return new { success = false, message = $"Transition index {transitionIndex} out of range (found {matching.Count})" };
+                transition = matching[transitionIndex];
+            }
+            else
+            {
+                AnimatorState fromState = null;
+                foreach (var cs in rootStateMachine.states)
+                {
+                    if (cs.state.name == fromStateName) { fromState = cs.state; break; }
+                }
+                if (fromState == null)
+                    return new { success = false, message = $"State '{fromStateName}' not found in layer {layerIndex}" };
+
+                var matching = new List<AnimatorStateTransition>();
+                foreach (var t in fromState.transitions)
+                {
+                    if (t.destinationState?.name == toStateName) matching.Add(t);
+                }
+                if (matching.Count == 0)
+                    return new { success = false, message = $"No transition from '{fromStateName}' to '{toStateName}' found" };
+                if (transitionIndex < 0 || transitionIndex >= matching.Count)
+                    return new { success = false, message = $"Transition index {transitionIndex} out of range (found {matching.Count})" };
+                transition = matching[transitionIndex];
+            }
+
+            Undo.RecordObject(transition, "Edit Transition");
+
+            JToken hasExitTimeToken = @params["hasExitTime"];
+            if (hasExitTimeToken != null) transition.hasExitTime = hasExitTimeToken.ToObject<bool>();
+
+            JToken exitTimeToken = @params["exitTime"];
+            if (exitTimeToken != null) transition.exitTime = exitTimeToken.ToObject<float>();
+
+            JToken durationToken = @params["duration"];
+            if (durationToken != null) transition.duration = durationToken.ToObject<float>();
+
+            JToken offsetToken = @params["offset"];
+            if (offsetToken != null) transition.offset = offsetToken.ToObject<float>();
+
+            JToken interruptionToken = @params["interruptionSource"];
+            if (interruptionToken != null)
+            {
+                switch (interruptionToken.ToString().ToLowerInvariant())
+                {
+                    case "none": transition.interruptionSource = TransitionInterruptionSource.None; break;
+                    case "source": transition.interruptionSource = TransitionInterruptionSource.Source; break;
+                    case "destination": transition.interruptionSource = TransitionInterruptionSource.Destination; break;
+                    case "sourcethendestination": transition.interruptionSource = TransitionInterruptionSource.SourceThenDestination; break;
+                    case "destinationthensource": transition.interruptionSource = TransitionInterruptionSource.DestinationThenSource; break;
+                }
+            }
+
+            EditorUtility.SetDirty(controller);
+            AssetDatabase.SaveAssets();
+
+            return new
+            {
+                success = true,
+                message = $"Updated transition from '{fromStateName}' to '{toStateName}'",
+                data = new
+                {
+                    fromState = fromStateName,
+                    toState = toStateName,
+                    hasExitTime = transition.hasExitTime,
+                    exitTime = transition.exitTime,
+                    duration = transition.duration,
+                    offset = transition.offset,
+                    interruptionSource = transition.interruptionSource.ToString()
+                }
+            };
+        }
+
         private static void CreateFoldersRecursive(string folderPath)
         {
             if (AssetDatabase.IsValidFolder(folderPath))

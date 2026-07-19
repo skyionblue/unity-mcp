@@ -89,6 +89,72 @@ namespace MCPForUnity.Editor.Tools.Animation
             };
         }
 
+        public static object GetStateInfo(JObject @params)
+        {
+            var go = ObjectResolver.ResolveGameObject(@params["target"], @params["searchMethod"]?.ToString());
+            if (go == null)
+                return new { success = false, message = "Target GameObject not found" };
+
+            var animator = go.GetComponent<Animator>();
+            if (animator == null)
+                return new { success = false, message = $"No Animator component on '{go.name}'" };
+
+            if (!Application.isPlaying)
+                return new { success = false, message = "animator_get_state_info requires Play mode. State info is not available in Edit mode." };
+
+            int? requestedLayer = @params["layerIndex"]?.ToObject<int?>();
+            bool allLayers = !requestedLayer.HasValue || requestedLayer.Value < 0;
+
+            if (!allLayers && requestedLayer.Value >= animator.layerCount)
+                return new { success = false, message = $"Layer index {requestedLayer.Value} out of range (0-{animator.layerCount - 1})" };
+
+            var results = new List<object>();
+            int start = allLayers ? 0 : requestedLayer.Value;
+            int end   = allLayers ? animator.layerCount : requestedLayer.Value + 1;
+
+            for (int i = start; i < end; i++)
+            {
+                bool inTransition = animator.IsInTransition(i);
+                var current = animator.GetCurrentAnimatorStateInfo(i);
+
+                object transitionInfo = null;
+                if (inTransition)
+                {
+                    var next = animator.GetNextAnimatorStateInfo(i);
+                    var tInfo = animator.GetAnimatorTransitionInfo(i);
+                    transitionInfo = new
+                    {
+                        normalizedTime = tInfo.normalizedTime,
+                        duration = tInfo.duration,
+                        nextStateHash = next.fullPathHash,
+                        nextStateNormalizedTime = next.normalizedTime
+                    };
+                }
+
+                results.Add(new
+                {
+                    layerIndex = i,
+                    layerName = animator.GetLayerName(i),
+                    currentStateHash = current.fullPathHash,
+                    currentStateNormalizedTime = current.normalizedTime,
+                    currentStateLength = current.length,
+                    currentStateSpeed = current.speed,
+                    isInTransition = inTransition,
+                    transition = transitionInfo
+                });
+            }
+
+            return new
+            {
+                success = true,
+                data = new
+                {
+                    gameObject = go.name,
+                    layers = results
+                }
+            };
+        }
+
         public static object GetParameter(JObject @params)
         {
             var go = ObjectResolver.ResolveGameObject(@params["target"], @params["searchMethod"]?.ToString());

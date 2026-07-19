@@ -198,5 +198,53 @@ namespace MCPForUnity.Editor.Tools.Animation
                 }
             };
         }
+
+        public static object SetIKPass(JObject @params)
+        {
+            string controllerPath = @params["controllerPath"]?.ToString();
+            if (string.IsNullOrEmpty(controllerPath))
+                return new { success = false, message = "'controllerPath' is required" };
+
+            controllerPath = AssetPathUtility.SanitizeAssetPath(controllerPath);
+            if (controllerPath == null)
+                return new { success = false, message = "Invalid asset path" };
+
+            var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
+            if (controller == null)
+                return new { success = false, message = $"AnimatorController not found at '{controllerPath}'" };
+
+            int layerIndex = @params["layerIndex"]?.ToObject<int>() ?? 0;
+            if (layerIndex < 0 || layerIndex >= controller.layers.Length)
+                return new { success = false, message = $"Layer index {layerIndex} out of range (0-{controller.layers.Length - 1})" };
+
+            JToken ikPassToken = @params["ikPass"];
+            if (ikPassToken == null)
+                return new { success = false, message = "'ikPass' is required (true or false)" };
+
+            bool ikPass = ikPassToken.ToObject<bool>();
+
+            Undo.RecordObject(controller, "Set Layer IK Pass");
+            var layers = controller.layers;
+            var layer = layers[layerIndex];
+            layer.iKPass = ikPass;
+            layers[layerIndex] = layer;
+            controller.layers = layers;
+
+            EditorUtility.SetDirty(controller);
+            AssetDatabase.SaveAssets();
+
+            return new
+            {
+                success = true,
+                message = $"Set IK pass to {ikPass} on layer {layerIndex} ('{layer.name}') of '{controllerPath}'",
+                data = new
+                {
+                    controllerPath,
+                    layerIndex,
+                    layerName = layer.name,
+                    ikPass
+                }
+            };
+        }
     }
 }

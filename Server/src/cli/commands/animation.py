@@ -216,6 +216,35 @@ def animator_set_speed(target: str, speed: float, search_method: Optional[str]):
     click.echo(format_output(result, config.format))
 
 
+@animator.command("get-state-info")
+@click.argument("target")
+@click.option("--layer-index", type=int, default=None, help="Layer index. Omit to return all layers.")
+@click.option("--search-method", type=SEARCH_METHOD_CHOICE_BASIC, default=None)
+@handle_unity_errors
+def animator_get_state_info(target: str, layer_index: Optional[int], search_method: Optional[str]):
+    """Get runtime state info for an Animator (Play mode only).
+
+    Returns current state hash, normalized time, and transition info for each layer.
+
+    \b
+    Examples:
+        unity-mcp animation animator get-state-info "Player"
+        unity-mcp animation animator get-state-info "Player" --layer-index 1
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "animator_get_state_info",
+        "target": target,
+    }
+    if layer_index is not None:
+        params["layerIndex"] = layer_index
+    if search_method:
+        params["searchMethod"] = search_method
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+
+
 @animator.command("set-enabled")
 @click.argument("target")
 @click.argument("enabled", type=bool)
@@ -521,6 +550,124 @@ def clip_remove_event(clip_path: str, event_index: Optional[int], function_name:
     click.echo(format_output(result, config.format))
     if result.get("success"):
         print_success("Event(s) removed")
+
+
+@clip.command("remove-curve")
+@click.argument("clip_path")
+@click.option("--property", "-p", "property_path", default=None, help="Property path to remove (e.g. 'localPosition.x'). Omit to remove all curves.")
+@click.option("--type", "-t", "component_type", default="Transform", help="Component type name.")
+@click.option("--relative-path", default="", help="Relative path within the hierarchy.")
+@handle_unity_errors
+def clip_remove_curve(clip_path: str, property_path: Optional[str], component_type: str, relative_path: str):
+    """Remove a curve (or all curves) from an AnimationClip.
+
+    \b
+    Examples:
+        unity-mcp animation clip remove-curve "Assets/Anim/Walk.anim" --property "localPosition.x"
+        unity-mcp animation clip remove-curve "Assets/Anim/Walk.anim"  # removes all curves
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "clip_remove_curve",
+        "clipPath": clip_path,
+    }
+    if property_path:
+        params["propertyPath"] = property_path
+        params["type"] = component_type
+        if relative_path:
+            params["relativePath"] = relative_path
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success("Curve(s) removed")
+
+
+@clip.command("set-loop-settings")
+@click.argument("clip_path")
+@click.option("--loop-time/--no-loop-time", default=None, help="Enable or disable loop time.")
+@click.option("--loop-pose/--no-loop-pose", default=None, help="Enable or disable loop pose blending.")
+@click.option("--cycle-offset", type=float, default=None, help="Cycle offset (0–1).")
+@click.option("--frame-rate", type=float, default=None, help="Clip frame rate.")
+@handle_unity_errors
+def clip_set_loop_settings(clip_path: str, loop_time: Optional[bool], loop_pose: Optional[bool], cycle_offset: Optional[float], frame_rate: Optional[float]):
+    """Change loop time, loop pose, cycle offset, or frame rate on an existing clip.
+
+    \b
+    Examples:
+        unity-mcp animation clip set-loop-settings "Assets/Anim/Walk.anim" --loop-time
+        unity-mcp animation clip set-loop-settings "Assets/Anim/Walk.anim" --no-loop-time --frame-rate 30
+        unity-mcp animation clip set-loop-settings "Assets/Anim/Walk.anim" --loop-pose --cycle-offset 0.5
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "clip_set_loop_settings",
+        "clipPath": clip_path,
+    }
+    if loop_time is not None:
+        params["loopTime"] = loop_time
+    if loop_pose is not None:
+        params["loopPose"] = loop_pose
+    if cycle_offset is not None:
+        params["cycleOffset"] = cycle_offset
+    if frame_rate is not None:
+        params["frameRate"] = frame_rate
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success("Loop settings updated")
+
+
+@clip.command("duplicate")
+@click.argument("clip_path")
+@click.argument("dest_path")
+@handle_unity_errors
+def clip_duplicate(clip_path: str, dest_path: str):
+    """Duplicate an AnimationClip asset to a new path.
+
+    \b
+    Examples:
+        unity-mcp animation clip duplicate "Assets/Anim/Walk.anim" "Assets/Anim/WalkFast.anim"
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "clip_duplicate",
+        "clipPath": clip_path,
+        "destPath": dest_path,
+    }
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success(f"Duplicated to {dest_path}")
+
+
+@clip.command("copy-curves")
+@click.argument("clip_path")
+@click.argument("dest_clip_path")
+@click.option("--overwrite/--no-overwrite", default=False, help="Overwrite existing curves in the destination clip.")
+@handle_unity_errors
+def clip_copy_curves(clip_path: str, dest_clip_path: str, overwrite: bool):
+    """Copy all curves from one clip into another (additive merge by default).
+
+    \b
+    Examples:
+        unity-mcp animation clip copy-curves "Assets/Anim/Source.anim" "Assets/Anim/Dest.anim"
+        unity-mcp animation clip copy-curves "Assets/Anim/Source.anim" "Assets/Anim/Dest.anim" --overwrite
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "clip_copy_curves",
+        "clipPath": clip_path,
+        "destClipPath": dest_clip_path,
+        "overwrite": overwrite,
+    }
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success("Curves copied")
 
 
 # =============================================================================
@@ -890,6 +1037,406 @@ def controller_add_blend_tree_child(controller_path: str, state_name: str, clip_
     click.echo(format_output(result, config.format))
     if result.get("success"):
         print_success("Added blend tree child")
+
+
+@controller.command("remove-state")
+@click.argument("controller_path")
+@click.argument("state_name")
+@click.option("--layer-index", default=0, type=int, help="Layer index.")
+@handle_unity_errors
+def controller_remove_state(controller_path: str, state_name: str, layer_index: int):
+    """Remove a state (and all its transitions) from an AnimatorController.
+
+    \b
+    Examples:
+        unity-mcp animation controller remove-state "Assets/Anim/Player.controller" "Walk"
+        unity-mcp animation controller remove-state "Assets/Anim/Player.controller" "Attack" --layer-index 1
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "controller_remove_state",
+        "controllerPath": controller_path,
+        "stateName": state_name,
+        "layerIndex": layer_index,
+    }
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success(f"Removed state '{state_name}'")
+
+
+@controller.command("remove-transition")
+@click.argument("controller_path")
+@click.argument("from_state")
+@click.argument("to_state")
+@click.option("--layer-index", default=0, type=int, help="Layer index.")
+@click.option("--transition-index", default=0, type=int, help="Index when multiple transitions share the same endpoints.")
+@handle_unity_errors
+def controller_remove_transition(controller_path: str, from_state: str, to_state: str, layer_index: int, transition_index: int):
+    """Remove a transition between states. Use 'AnyState' as from_state for any-state transitions.
+
+    \b
+    Examples:
+        unity-mcp animation controller remove-transition "Assets/Anim/Player.controller" "Walk" "Run"
+        unity-mcp animation controller remove-transition "Assets/Anim/Player.controller" "AnyState" "Dead"
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "controller_remove_transition",
+        "controllerPath": controller_path,
+        "fromState": from_state,
+        "toState": to_state,
+        "layerIndex": layer_index,
+        "transitionIndex": transition_index,
+    }
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success(f"Removed transition from '{from_state}' to '{to_state}'")
+
+
+@controller.command("set-state-motion")
+@click.argument("controller_path")
+@click.argument("state_name")
+@click.argument("clip_path")
+@click.option("--layer-index", default=0, type=int, help="Layer index.")
+@handle_unity_errors
+def controller_set_state_motion(controller_path: str, state_name: str, clip_path: str, layer_index: int):
+    """Replace the clip assigned to an existing state without touching transitions.
+
+    \b
+    Examples:
+        unity-mcp animation controller set-state-motion "Assets/Anim/Player.controller" "Walk" "Assets/Anim/WalkFast.anim"
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "controller_set_state_motion",
+        "controllerPath": controller_path,
+        "clipPath": clip_path,
+        "stateName": state_name,
+        "layerIndex": layer_index,
+    }
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success(f"Set motion of '{state_name}'")
+
+
+@controller.command("set-default-state")
+@click.argument("controller_path")
+@click.argument("state_name")
+@click.option("--layer-index", default=0, type=int, help="Layer index.")
+@handle_unity_errors
+def controller_set_default_state(controller_path: str, state_name: str, layer_index: int):
+    """Set the default (entry) state on a layer.
+
+    \b
+    Examples:
+        unity-mcp animation controller set-default-state "Assets/Anim/Player.controller" "Idle"
+        unity-mcp animation controller set-default-state "Assets/Anim/Player.controller" "Idle" --layer-index 1
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "controller_set_default_state",
+        "controllerPath": controller_path,
+        "stateName": state_name,
+        "layerIndex": layer_index,
+    }
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success(f"Set default state to '{state_name}'")
+
+
+@controller.command("remove-parameter")
+@click.argument("controller_path")
+@click.argument("param_name")
+@handle_unity_errors
+def controller_remove_parameter(controller_path: str, param_name: str):
+    """Remove a parameter from an AnimatorController.
+
+    \b
+    Examples:
+        unity-mcp animation controller remove-parameter "Assets/Anim/Player.controller" "Speed"
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "controller_remove_parameter",
+        "controllerPath": controller_path,
+        "parameterName": param_name,
+    }
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success(f"Removed parameter '{param_name}'")
+
+
+@controller.command("edit-transition")
+@click.argument("controller_path")
+@click.argument("from_state")
+@click.argument("to_state")
+@click.option("--has-exit-time/--no-exit-time", default=None, help="Enable or disable exit time.")
+@click.option("--exit-time", type=float, default=None, help="Normalized exit time (0–1).")
+@click.option("--duration", "-d", type=float, default=None, help="Transition duration in seconds.")
+@click.option("--offset", type=float, default=None, help="Normalized destination state start offset.")
+@click.option(
+    "--interruption-source",
+    type=click.Choice(["None", "Source", "Destination", "SourceThenDestination", "DestinationThenSource"]),
+    default=None,
+    help="Transition interruption source.",
+)
+@click.option("--layer-index", default=0, type=int, help="Layer index.")
+@click.option("--transition-index", default=0, type=int, help="Index when multiple transitions share the same endpoints.")
+@handle_unity_errors
+def controller_edit_transition(
+    controller_path: str,
+    from_state: str,
+    to_state: str,
+    has_exit_time: Optional[bool],
+    exit_time: Optional[float],
+    duration: Optional[float],
+    offset: Optional[float],
+    interruption_source: Optional[str],
+    layer_index: int,
+    transition_index: int,
+):
+    """Edit timing properties of an existing transition.
+
+    \b
+    Examples:
+        unity-mcp animation controller edit-transition "Assets/Anim/Player.controller" "Walk" "Run" \\
+            --no-exit-time --duration 0.15
+        unity-mcp animation controller edit-transition "Assets/Anim/Player.controller" "AnyState" "Dead" \\
+            --has-exit-time --exit-time 0.9
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "controller_edit_transition",
+        "controllerPath": controller_path,
+        "fromState": from_state,
+        "toState": to_state,
+        "layerIndex": layer_index,
+        "transitionIndex": transition_index,
+    }
+    if has_exit_time is not None:
+        params["hasExitTime"] = has_exit_time
+    if exit_time is not None:
+        params["exitTime"] = exit_time
+    if duration is not None:
+        params["duration"] = duration
+    if offset is not None:
+        params["offset"] = offset
+    if interruption_source is not None:
+        params["interruptionSource"] = interruption_source
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success(f"Updated transition from '{from_state}' to '{to_state}'")
+
+
+# =============================================================================
+# Phase 3 — AnimatorOverrideController Commands
+# =============================================================================
+
+@controller.command("create-override")
+@click.argument("controller_path")
+@click.option("--base-controller-path", required=True, help="Path of the base AnimatorController to wrap.")
+@handle_unity_errors
+def controller_create_override(controller_path: str, base_controller_path: str):
+    """Create an AnimatorOverrideController that wraps a base controller.
+
+    \b
+    Examples:
+        unity-mcp animation controller create-override "Assets/Anim/HeroOverride.overrideController" \\
+            --base-controller-path "Assets/Anim/Base.controller"
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "controller_create_override",
+        "controllerPath": controller_path,
+        "baseControllerPath": base_controller_path,
+    }
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success(f"Created override controller at {controller_path}")
+
+
+@controller.command("override-set-clip")
+@click.argument("controller_path")
+@click.option("--original-clip-name", required=True, help="Name of the original clip in the base controller.")
+@click.option("--override-clip-path", required=True, help="Path of the replacement AnimationClip asset.")
+@handle_unity_errors
+def controller_override_set_clip(controller_path: str, original_clip_name: str, override_clip_path: str):
+    """Map an original clip to a replacement clip in an override controller.
+
+    \b
+    Examples:
+        unity-mcp animation controller override-set-clip "Assets/Anim/HeroOverride.overrideController" \\
+            --original-clip-name "Walk" --override-clip-path "Assets/Anim/HeroWalk.anim"
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "controller_override_set_clip",
+        "controllerPath": controller_path,
+        "originalClipName": original_clip_name,
+        "overrideClipPath": override_clip_path,
+    }
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success(f"Mapped '{original_clip_name}' in override controller")
+
+
+@controller.command("override-get-clips")
+@click.argument("controller_path")
+@handle_unity_errors
+def controller_override_get_clips(controller_path: str):
+    """Get the full clip override map from an override controller.
+
+    \b
+    Examples:
+        unity-mcp animation controller override-get-clips "Assets/Anim/HeroOverride.overrideController"
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "controller_override_get_clips",
+        "controllerPath": controller_path,
+    }
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+
+
+@controller.command("override-assign")
+@click.argument("controller_path")
+@click.argument("target")
+@click.option("--search-method", type=SEARCH_METHOD_CHOICE_BASIC, default=None)
+@handle_unity_errors
+def controller_override_assign(controller_path: str, target: str, search_method: Optional[str]):
+    """Assign an AnimatorOverrideController to a GameObject's Animator.
+
+    \b
+    Examples:
+        unity-mcp animation controller override-assign "Assets/Anim/HeroOverride.overrideController" "Hero"
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "controller_override_assign",
+        "controllerPath": controller_path,
+        "target": target,
+    }
+    if search_method:
+        params["searchMethod"] = search_method
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success(f"Assigned override controller to '{target}'")
+
+
+# =============================================================================
+# Phase 4 — AvatarMask & IK Pass Commands
+# =============================================================================
+
+@controller.command("create-avatar-mask")
+@click.argument("mask_path")
+@click.option(
+    "--body-part", "body_parts",
+    multiple=True,
+    help="Body part to include (repeatable). Omit to include all. "
+         "Values: Root, Body, Head, LeftLeg, RightLeg, LeftArm, RightArm, "
+         "LeftFingers, RightFingers, LeftFootIK, RightFootIK, LeftHandIK, RightHandIK.",
+)
+@click.option("--transform-path", "transform_paths", multiple=True, help="Transform path to include (repeatable).")
+@handle_unity_errors
+def controller_create_avatar_mask(mask_path: str, body_parts: tuple, transform_paths: tuple):
+    """Create an AvatarMask asset. Omit --body-part to include all body parts.
+
+    \b
+    Examples:
+        unity-mcp animation controller create-avatar-mask "Assets/Anim/UpperBody.mask" \\
+            --body-part Head --body-part LeftArm --body-part RightArm
+        unity-mcp animation controller create-avatar-mask "Assets/Anim/FullBody.mask"
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "controller_create_avatar_mask",
+        "maskPath": mask_path,
+    }
+    if body_parts:
+        params["bodyParts"] = list(body_parts)
+    if transform_paths:
+        params["transformPaths"] = list(transform_paths)
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success(f"Created AvatarMask at {mask_path}")
+
+
+@controller.command("assign-avatar-mask")
+@click.argument("controller_path")
+@click.option("--mask-path", required=True, help="Path to the AvatarMask asset.")
+@click.option("--layer-index", default=0, type=int, help="Layer index to assign the mask to.")
+@handle_unity_errors
+def controller_assign_avatar_mask(controller_path: str, mask_path: str, layer_index: int):
+    """Assign an AvatarMask to a layer of an AnimatorController.
+
+    \b
+    Examples:
+        unity-mcp animation controller assign-avatar-mask "Assets/Anim/Player.controller" \\
+            --mask-path "Assets/Anim/UpperBody.mask" --layer-index 1
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "controller_assign_avatar_mask",
+        "controllerPath": controller_path,
+        "maskPath": mask_path,
+        "layerIndex": layer_index,
+    }
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success(f"Assigned avatar mask to layer {layer_index}")
+
+
+@controller.command("set-layer-ik-pass")
+@click.argument("controller_path")
+@click.option("--ik-pass/--no-ik-pass", required=True, default=None, help="Enable or disable the IK pass.")
+@click.option("--layer-index", default=0, type=int, help="Layer index.")
+@handle_unity_errors
+def controller_set_layer_ik_pass(controller_path: str, ik_pass: bool, layer_index: int):
+    """Enable or disable the IK pass on a controller layer.
+
+    Required for OnAnimatorIK callbacks to fire on non-base layers.
+
+    \b
+    Examples:
+        unity-mcp animation controller set-layer-ik-pass "Assets/Anim/Player.controller" --ik-pass --layer-index 1
+        unity-mcp animation controller set-layer-ik-pass "Assets/Anim/Player.controller" --no-ik-pass --layer-index 2
+    """
+    config = get_config()
+    params: dict[str, Any] = {
+        "action": "controller_set_layer_ik_pass",
+        "controllerPath": controller_path,
+        "ikPass": ik_pass,
+        "layerIndex": layer_index,
+    }
+
+    result = run_command("manage_animation", _normalize_params(params), config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success(f"Set IK pass to {ik_pass} on layer {layer_index}")
 
 
 # =============================================================================

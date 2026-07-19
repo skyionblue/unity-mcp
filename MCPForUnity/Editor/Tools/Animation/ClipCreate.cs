@@ -616,6 +616,234 @@ namespace MCPForUnity.Editor.Tools.Animation
             };
         }
 
+        public static object RemoveCurve(JObject @params)
+        {
+            string clipPath = @params["clipPath"]?.ToString();
+            if (string.IsNullOrEmpty(clipPath))
+                return new { success = false, message = "'clipPath' is required" };
+
+            clipPath = AssetPathUtility.SanitizeAssetPath(clipPath);
+            if (clipPath == null)
+                return new { success = false, message = "Invalid asset path" };
+
+            var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
+            if (clip == null)
+                return new { success = false, message = $"AnimationClip not found at '{clipPath}'" };
+
+            string propertyPath = @params["propertyPath"]?.ToString();
+
+            Undo.RecordObject(clip, "Remove Animation Curve");
+
+            if (string.IsNullOrEmpty(propertyPath))
+            {
+                var allBindings = AnimationUtility.GetCurveBindings(clip);
+                foreach (var binding in allBindings)
+                    AnimationUtility.SetEditorCurve(clip, binding, null);
+
+                EditorUtility.SetDirty(clip);
+                AssetDatabase.SaveAssets();
+
+                return new
+                {
+                    success = true,
+                    message = $"Removed all {allBindings.Length} curves from '{clipPath}'",
+                    data = new { clipPath, removedCount = allBindings.Length }
+                };
+            }
+
+            string typeName = @params["type"]?.ToString() ?? "Transform";
+            Type componentType = ResolveType(typeName);
+            if (componentType == null)
+                return new { success = false, message = $"Could not resolve type '{typeName}'" };
+
+            string relativePath = @params["relativePath"]?.ToString() ?? "";
+            var targetBinding = EditorCurveBinding.FloatCurve(relativePath, componentType, propertyPath);
+
+            var existing = AnimationUtility.GetEditorCurve(clip, targetBinding);
+            if (existing == null)
+                return new { success = false, message = $"Curve '{propertyPath}' ({typeName}) not found on this clip" };
+
+            AnimationUtility.SetEditorCurve(clip, targetBinding, null);
+            EditorUtility.SetDirty(clip);
+            AssetDatabase.SaveAssets();
+
+            return new
+            {
+                success = true,
+                message = $"Removed curve '{propertyPath}' ({typeName}) from '{clipPath}'",
+                data = new { clipPath, propertyPath, type = typeName }
+            };
+        }
+
+        public static object SetLoopSettings(JObject @params)
+        {
+            string clipPath = @params["clipPath"]?.ToString();
+            if (string.IsNullOrEmpty(clipPath))
+                return new { success = false, message = "'clipPath' is required" };
+
+            clipPath = AssetPathUtility.SanitizeAssetPath(clipPath);
+            if (clipPath == null)
+                return new { success = false, message = "Invalid asset path" };
+
+            var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
+            if (clip == null)
+                return new { success = false, message = $"AnimationClip not found at '{clipPath}'" };
+
+            JToken loopTimeToken = @params["loopTime"];
+            JToken loopPoseToken = @params["loopPose"];
+            JToken cycleOffsetToken = @params["cycleOffset"];
+            JToken frameRateToken = @params["frameRate"];
+
+            if (loopTimeToken == null && loopPoseToken == null && cycleOffsetToken == null && frameRateToken == null)
+                return new { success = false, message = "No settings provided. Pass at least one of: loopTime, loopPose, cycleOffset, frameRate" };
+
+            Undo.RecordObject(clip, "Set Clip Loop Settings");
+            var settings = AnimationUtility.GetAnimationClipSettings(clip);
+
+            if (loopTimeToken != null) settings.loopTime = loopTimeToken.ToObject<bool>();
+            if (loopPoseToken != null) settings.loopBlend = loopPoseToken.ToObject<bool>();
+            if (cycleOffsetToken != null) settings.cycleOffset = cycleOffsetToken.ToObject<float>();
+            if (frameRateToken != null) clip.frameRate = frameRateToken.ToObject<float>();
+
+            AnimationUtility.SetAnimationClipSettings(clip, settings);
+
+            // Sync m_WrapMode for legacy compatibility (mirrors Create's approach)
+            var so = new SerializedObject(clip);
+            var wrapProp = so.FindProperty("m_WrapMode");
+            if (wrapProp != null)
+            {
+                wrapProp.intValue = settings.loopTime ? (int)WrapMode.Loop : (int)WrapMode.Default;
+                so.ApplyModifiedProperties();
+            }
+
+            EditorUtility.SetDirty(clip);
+            AssetDatabase.SaveAssets();
+
+            var finalSettings = AnimationUtility.GetAnimationClipSettings(clip);
+            return new
+            {
+                success = true,
+                message = $"Updated loop settings on '{clipPath}'",
+                data = new
+                {
+                    clipPath,
+                    loopTime = finalSettings.loopTime,
+                    loopPose = finalSettings.loopBlend,
+                    cycleOffset = finalSettings.cycleOffset,
+                    frameRate = clip.frameRate
+                }
+            };
+        }
+
+        public static object Duplicate(JObject @params)
+        {
+            string clipPath = @params["clipPath"]?.ToString();
+            if (string.IsNullOrEmpty(clipPath))
+                return new { success = false, message = "'clipPath' is required" };
+
+            clipPath = AssetPathUtility.SanitizeAssetPath(clipPath);
+            if (clipPath == null)
+                return new { success = false, message = "Invalid asset path" };
+
+            var source = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
+            if (source == null)
+                return new { success = false, message = $"AnimationClip not found at '{clipPath}'" };
+
+            string destPath = @params["destPath"]?.ToString();
+            if (string.IsNullOrEmpty(destPath))
+                return new { success = false, message = "'destPath' is required (e.g. 'Assets/Animations/WalkFast.anim')" };
+
+            destPath = AssetPathUtility.SanitizeAssetPath(destPath);
+            if (destPath == null)
+                return new { success = false, message = "Invalid destination asset path" };
+
+            if (!destPath.EndsWith(".anim", StringComparison.OrdinalIgnoreCase))
+                destPath += ".anim";
+
+            if (AssetDatabase.LoadAssetAtPath<AnimationClip>(destPath) != null)
+                return new { success = false, message = $"AnimationClip already exists at '{destPath}'. Delete it first or use a different path." };
+
+            string destDir = Path.GetDirectoryName(destPath)?.Replace('\\', '/');
+            if (!string.IsNullOrEmpty(destDir) && !AssetDatabase.IsValidFolder(destDir))
+                CreateFoldersRecursive(destDir);
+
+            bool copied = AssetDatabase.CopyAsset(clipPath, destPath);
+            if (!copied)
+                return new { success = false, message = $"Failed to copy '{clipPath}' to '{destPath}'" };
+
+            AssetDatabase.SaveAssets();
+
+            return new
+            {
+                success = true,
+                message = $"Duplicated '{clipPath}' to '{destPath}'",
+                data = new { sourcePath = clipPath, destPath }
+            };
+        }
+
+        public static object CopyCurves(JObject @params)
+        {
+            string clipPath = @params["clipPath"]?.ToString();
+            if (string.IsNullOrEmpty(clipPath))
+                return new { success = false, message = "'clipPath' is required (source clip)" };
+
+            clipPath = AssetPathUtility.SanitizeAssetPath(clipPath);
+            if (clipPath == null)
+                return new { success = false, message = "Invalid asset path" };
+
+            var sourceClip = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
+            if (sourceClip == null)
+                return new { success = false, message = $"Source AnimationClip not found at '{clipPath}'" };
+
+            string destClipPath = @params["destClipPath"]?.ToString();
+            if (string.IsNullOrEmpty(destClipPath))
+                return new { success = false, message = "'destClipPath' is required (destination clip)" };
+
+            destClipPath = AssetPathUtility.SanitizeAssetPath(destClipPath);
+            if (destClipPath == null)
+                return new { success = false, message = "Invalid destination asset path" };
+
+            var destClip = AssetDatabase.LoadAssetAtPath<AnimationClip>(destClipPath);
+            if (destClip == null)
+                return new { success = false, message = $"Destination AnimationClip not found at '{destClipPath}'" };
+
+            bool overwrite = @params["overwrite"]?.ToObject<bool>() ?? false;
+
+            var sourceBindings = AnimationUtility.GetCurveBindings(sourceClip);
+            if (sourceBindings.Length == 0)
+                return new { success = false, message = "Source clip has no curves to copy" };
+
+            Undo.RecordObject(destClip, "Copy Animation Curves");
+
+            int copiedCount = 0;
+            int skippedCount = 0;
+
+            foreach (var binding in sourceBindings)
+            {
+                var existingCurve = AnimationUtility.GetEditorCurve(destClip, binding);
+                if (existingCurve != null && !overwrite)
+                {
+                    skippedCount++;
+                    continue;
+                }
+
+                var curve = AnimationUtility.GetEditorCurve(sourceClip, binding);
+                AnimationUtility.SetEditorCurve(destClip, binding, curve);
+                copiedCount++;
+            }
+
+            EditorUtility.SetDirty(destClip);
+            AssetDatabase.SaveAssets();
+
+            string skippedMsg = skippedCount > 0 ? $" ({skippedCount} skipped, already exist)" : "";
+            return new
+            {
+                success = true,
+                message = $"Copied {copiedCount} curves from '{clipPath}' to '{destClipPath}'{skippedMsg}",
+                data = new { sourcePath = clipPath, destPath = destClipPath, copiedCount, skippedCount }
+            };
+        }
+
         private static void CreateFoldersRecursive(string folderPath)
         {
             if (AssetDatabase.IsValidFolder(folderPath))
