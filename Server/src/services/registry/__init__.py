@@ -4,6 +4,7 @@ Registry package for MCP tool auto-discovery.
 from .tool_registry import (
     mcp_for_unity_tool,
     get_registered_tools,
+    get_tool_by_name,
     get_group_tool_names,
     clear_tool_registry,
     TOOL_GROUPS,
@@ -18,6 +19,7 @@ from .resource_registry import (
 __all__ = [
     'mcp_for_unity_tool',
     'get_registered_tools',
+    'get_tool_by_name',
     'get_group_tool_names',
     'clear_tool_registry',
     'TOOL_GROUPS',

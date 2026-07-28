@@ -125,6 +125,14 @@ def get_group_tool_names() -> dict[str, list[str]]:
     return result
 
 
+def get_tool_by_name(name: str) -> dict[str, Any] | None:
+    """Return the registry entry for a tool by exact name, or None if not found."""
+    for tool in _tool_registry:
+        if tool["name"] == name:
+            return tool
+    return None
+
+
 def clear_tool_registry():
     """Clear the tool registry (useful for testing)"""
     _tool_registry.clear()

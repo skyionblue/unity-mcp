@@ -11,6 +11,12 @@ from core.logging_decorator import log_execution
 from utils.module_discovery import discover_modules
 from services.registry import get_registered_tools, TOOL_GROUPS, DEFAULT_ENABLED_GROUPS
 
+# When True, grouped tools are stored in the registry but not registered
+# directly with FastMCP.  Three gateway tools (search_tools, execute_tool,
+# execute_tools) mediate all access instead.  Set UNITY_MCP_GATEWAY_MODE=0
+# to fall back to the old per-tool registration for debugging.
+GATEWAY_MODE: bool = os.environ.get("UNITY_MCP_GATEWAY_MODE", "1") != "0"
+
 logger = logging.getLogger("mcp-for-unity-server")
 
 # Export decorator and helpers for easy imports within tools
@@ -18,6 +24,7 @@ __all__ = [
     "register_all_tools",
     "sync_tool_visibility_from_unity",
     "get_unity_instance_from_context",
+    "GATEWAY_MODE",
 ]
 
 
@@ -45,28 +52,50 @@ def register_all_tools(mcp: FastMCP, *, project_scoped_tools: bool = True):
         logger.warning("No MCP tools registered!")
         return
 
+    gateway = GATEWAY_MODE
+    direct_count = 0
+    gateway_count = 0
+
     for tool_info in tools:
         func = tool_info['func']
         tool_name = tool_info['name']
         description = tool_info['description']
         kwargs = tool_info['kwargs']
+        is_meta = tool_info.get('group') is None  # group=None → always-visible meta-tool
 
         if not project_scoped_tools and tool_name == "execute_custom_tool":
             logger.info(
                 "Skipping execute_custom_tool registration (project-scoped tools disabled)")
             continue
 
-        # Apply decorators: logging -> telemetry -> mcp.tool
+        # Apply logging and telemetry wrappers regardless of registration path.
         # Note: Parameter normalization (camelCase -> snake_case) is handled by
-        # ParamNormalizerMiddleware before FastMCP validation
+        # ParamNormalizerMiddleware before FastMCP validation.
         wrapped = log_execution(tool_name, "Tool")(func)
         wrapped = telemetry_tool(tool_name)(wrapped)
-        wrapped = mcp.tool(
-            name=tool_name, description=description, **kwargs)(wrapped)
-        tool_info['func'] = wrapped
-        logger.debug(f"Registered tool: {tool_name} - {description}")
 
-    logger.info(f"Registered {len(tools)} MCP tools")
+        if gateway and not is_meta:
+            # Gateway mode: store the wrapped function for gateway dispatch but
+            # do NOT register with FastMCP.  The tool stays in the registry so
+            # search_tools / execute_tool can discover and invoke it.
+            tool_info['func'] = wrapped
+            gateway_count += 1
+            logger.debug(f"Gateway (not registered with FastMCP): {tool_name}")
+        else:
+            # Direct mode or meta-tool: register normally with FastMCP.
+            wrapped = mcp.tool(name=tool_name, description=description, **kwargs)(wrapped)
+            tool_info['func'] = wrapped
+            direct_count += 1
+            logger.debug(f"Registered tool: {tool_name} - {description}")
+
+    if gateway:
+        logger.info(
+            f"Gateway mode: {direct_count} tools registered directly (meta/always-visible), "
+            f"{gateway_count} routed through gateway. "
+            "Use search_tools / execute_tool / execute_tools to access grouped tools."
+        )
+    else:
+        logger.info(f"Registered {direct_count} MCP tools")
 
     # In HTTP mode, disable non-default groups at the server level so new
     # sessions start lean.  Unity will re-enable groups via register_tools
