@@ -37,6 +37,21 @@ namespace MCPForUnity.Editor.Tools.Animation
             { "blend_parameter_x", "blendParameterX" },
             { "blend_parameter_y", "blendParameterY" },
             { "blend_type", "blendType" },
+            { "transition_index", "transitionIndex" },
+            { "interruption_source", "interruptionSource" },
+            { "loop_time", "loopTime" },
+            { "loop_pose", "loopPose" },
+            { "cycle_offset", "cycleOffset" },
+            { "frame_rate", "frameRate" },
+            { "dest_path", "destPath" },
+            { "dest_clip_path", "destClipPath" },
+            { "base_controller_path", "baseControllerPath" },
+            { "original_clip_name", "originalClipName" },
+            { "override_clip_path", "overrideClipPath" },
+            { "mask_path", "maskPath" },
+            { "body_parts", "bodyParts" },
+            { "transform_paths", "transformPaths" },
+            { "ik_pass", "ikPass" },
         };
 
         private static JObject NormalizeParams(JObject source)
@@ -201,6 +216,7 @@ namespace MCPForUnity.Editor.Tools.Animation
             {
                 case "get_info": return AnimatorRead.GetInfo(@params);
                 case "get_parameter": return AnimatorRead.GetParameter(@params);
+                case "get_state_info": return AnimatorRead.GetStateInfo(@params);
                 case "play": return AnimatorControl.Play(@params);
                 case "crossfade": return AnimatorControl.Crossfade(@params);
                 case "set_parameter": return AnimatorControl.SetParameter(@params);
@@ -227,8 +243,21 @@ namespace MCPForUnity.Editor.Tools.Animation
                 case "create_blend_tree_1d": return ControllerBlendTrees.CreateBlendTree1D(@params);
                 case "create_blend_tree_2d": return ControllerBlendTrees.CreateBlendTree2D(@params);
                 case "add_blend_tree_child": return ControllerBlendTrees.AddBlendTreeChild(@params);
+                case "remove_state": return ControllerCreate.RemoveState(@params);
+                case "remove_transition": return ControllerCreate.RemoveTransition(@params);
+                case "set_state_motion": return ControllerCreate.SetStateMotion(@params);
+                case "set_default_state": return ControllerCreate.SetDefaultState(@params);
+                case "remove_parameter": return ControllerCreate.RemoveParameter(@params);
+                case "edit_transition": return ControllerCreate.EditTransition(@params);
+                case "create_override": return ControllerOverride.Create(@params);
+                case "override_set_clip": return ControllerOverride.SetClip(@params);
+                case "override_get_clips": return ControllerOverride.GetClips(@params);
+                case "override_assign": return ControllerOverride.AssignToGameObject(@params);
+                case "create_avatar_mask": return ControllerAvatarMask.CreateAvatarMask(@params);
+                case "assign_avatar_mask": return ControllerAvatarMask.AssignToLayer(@params);
+                case "set_layer_ik_pass": return ControllerLayers.SetIKPass(@params);
                 default:
-                    return new { success = false, message = $"Unknown controller action: {action}. Valid: create, add_state, add_transition, add_parameter, get_info, assign, add_layer, remove_layer, set_layer_weight, create_blend_tree_1d, create_blend_tree_2d, add_blend_tree_child" };
+                    return new { success = false, message = $"Unknown controller action: {action}. Valid: create, add_state, add_transition, add_parameter, get_info, assign, add_layer, remove_layer, set_layer_weight, create_blend_tree_1d, create_blend_tree_2d, add_blend_tree_child, remove_state, remove_transition, set_state_motion, set_default_state, remove_parameter, edit_transition, create_override, override_set_clip, override_get_clips, override_assign, create_avatar_mask, assign_avatar_mask, set_layer_ik_pass" };
             }
         }
 
@@ -245,8 +274,12 @@ namespace MCPForUnity.Editor.Tools.Animation
                 case "assign": return ClipCreate.Assign(@params);
                 case "add_event": return ClipCreate.AddEvent(@params);
                 case "remove_event": return ClipCreate.RemoveEvent(@params);
+                case "remove_curve": return ClipCreate.RemoveCurve(@params);
+                case "set_loop_settings": return ClipCreate.SetLoopSettings(@params);
+                case "duplicate": return ClipCreate.Duplicate(@params);
+                case "copy_curves": return ClipCreate.CopyCurves(@params);
                 default:
-                    return new { success = false, message = $"Unknown clip action: {action}. Valid: create, get_info, add_curve, set_curve, set_vector_curve, create_preset, assign, add_event, remove_event" };
+                    return new { success = false, message = $"Unknown clip action: {action}. Valid: create, get_info, add_curve, set_curve, set_vector_curve, create_preset, assign, add_event, remove_event, remove_curve, set_loop_settings, duplicate, copy_curves" };
             }
         }
     }

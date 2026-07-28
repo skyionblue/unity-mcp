@@ -12,6 +12,7 @@ ANIMATOR_ACTIONS = [
     "animator_get_info", "animator_get_parameter",
     "animator_play", "animator_crossfade",
     "animator_set_parameter", "animator_set_speed", "animator_set_enabled",
+    "animator_get_state_info",
 ]
 
 CONTROLLER_ACTIONS = [
@@ -19,6 +20,11 @@ CONTROLLER_ACTIONS = [
     "controller_add_parameter", "controller_get_info", "controller_assign",
     "controller_add_layer", "controller_remove_layer", "controller_set_layer_weight",
     "controller_create_blend_tree_1d", "controller_create_blend_tree_2d", "controller_add_blend_tree_child",
+    "controller_remove_state", "controller_remove_transition", "controller_set_state_motion",
+    "controller_set_default_state", "controller_remove_parameter", "controller_edit_transition",
+    "controller_create_override", "controller_override_set_clip", "controller_override_get_clips",
+    "controller_override_assign", "controller_create_avatar_mask", "controller_assign_avatar_mask",
+    "controller_set_layer_ik_pass",
 ]
 
 CLIP_ACTIONS = [
@@ -26,6 +32,7 @@ CLIP_ACTIONS = [
     "clip_add_curve", "clip_set_curve", "clip_set_vector_curve",
     "clip_create_preset", "clip_assign",
     "clip_add_event", "clip_remove_event",
+    "clip_remove_curve", "clip_set_loop_settings", "clip_duplicate", "clip_copy_curves",
 ]
 
 ALL_ACTIONS = ANIMATOR_ACTIONS + CONTROLLER_ACTIONS + CLIP_ACTIONS #Not loaded in the MCP context, but will return this in the error response (1 Shot)
