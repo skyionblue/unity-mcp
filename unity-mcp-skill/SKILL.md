@@ -15,6 +15,35 @@ Before applying a template:
 - Validate targets/components first via resources and `find_gameobjects`.
 - Treat names, enum values, and property payloads as placeholders to adapt.
 
+## Gateway Calling Convention
+
+**The server runs in gateway mode by default.** Only a handful of meta-tools are registered directly with the MCP client: `search_tools`, `execute_tool`, `execute_tools`, `manage_tools`, `set_active_instance`, `debug_request_context`, `execute_custom_tool`.
+
+Every domain tool named anywhere in this skill — `manage_gameobject`, `manage_profiler`, `batch_execute`, `create_script`, all of them — is **not** directly callable. Calling one by name (e.g. `manage_profiler(action="profiler_start")`) returns `No such tool available`. Wrap it instead:
+
+```python
+# Wrong (will 404 under gateway mode):
+manage_profiler(action="profiler_start")
+
+# Right:
+execute_tool(tool="manage_profiler", params={"action": "profiler_start"})
+```
+
+For a sequence of calls, use `execute_tools` rather than issuing them as separate top-level tool calls:
+
+```python
+execute_tools(calls=[
+    {"tool": "manage_gameobject", "params": {"action": "create", "name": "Cube1", "primitive_type": "Cube"}},
+    {"tool": "manage_gameobject", "params": {"action": "create", "name": "Cube2", "primitive_type": "Cube"}},
+])
+```
+
+Note `batch_execute` (with its own `commands`/`parallel` params) is itself a domain tool, not the gateway's batching mechanism — invoke it as `execute_tool(tool="batch_execute", params={"commands": [...], "parallel": True})`.
+
+Use `search_tools(query=...)` to discover tool names and descriptions before calling `execute_tool` — it also reports each tool's group and whether that group is currently enabled for this session (`manage_tools` still toggles non-core groups like `profiling`, `vfx`, `asset_gen`, etc.).
+
+If a server is instead running with `UNITY_MCP_GATEWAY_MODE=0`, domain tools register directly as before and can be called by name without this wrapping.
+
 ## Quick Start: Resource-First Workflow
 
 **Always read relevant resources before using tools.** This prevents errors and provides the necessary context.
