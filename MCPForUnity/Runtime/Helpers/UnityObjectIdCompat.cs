@@ -65,7 +65,9 @@ namespace MCPForUnity.Runtime.Helpers
             }
             return _instanceIdToObject?.Invoke(null, new object[] { instanceId }) as Object;
 #elif UNITY_6000_3_OR_NEWER
+#pragma warning disable CS0618
             return EditorUtility.EntityIdToObject(instanceId);
+#pragma warning restore CS0618
 #else
             return EditorUtility.InstanceIDToObject(instanceId);
 #endif
